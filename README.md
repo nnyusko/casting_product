@@ -31,45 +31,87 @@
 └── README.md             # 프로젝트 안내 파일
 ```
 
-## ⚙️ 설치 방법
+## 🏗️ 시스템 아키텍처 (System Architecture)
 
-1.  **Git 리포지토리 복제:**
-    ```bash
-    git clone <repository_url>
-    cd casting_product
-    ```
+이 프로젝트는 실시간 데이터 처리를 위한 확장 가능한 마이크로서비스 아키텍처(MSA)를 기반으로 설계되었습니다.
 
-2.  **필요 라이브러리 설치:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+- **실시간 예측**: FastAPI 서버가 Docker 컨테이너로 실행되며, 사용자 요청에 따라 실시간으로 결함을 예측합니다.
+- **이벤트 스트리밍**: 예측 결과는 즉시 Apache Kafka 토픽으로 전송되어, 시스템의 다른 부분과 비동기적으로 통신합니다.
+- **데이터 처리 및 저장**: 별도의 Kafka Consumer가 이벤트를 수신하여, 향후 분석을 위해 Hadoop HDFS와 같은 대용량 스토리지에 데이터를 저장합니다.
+- **배치 분석**: Apache Spark를 사용하여 HDFS에 저장된 데이터를 주기적으로 분석하고 비즈니스 인사이트를 도출합니다.
+- **컨테이너 오케스트레이션**: 모든 서비스는 Kubernetes 환경에서 관리되어 자동 스케일링, 배포, 및 복구를 통해 높은 안정성과 확장성을 보장합니다.
 
-3.  **데이터셋 준비:**
-    - `data` 폴더에 `casting_data` 폴더를 위치시켜야 합니다.
-    - 데이터셋은 [Kaggle](https://www.kaggle.com/datasets/ravirajsinh45/real-life-industrial-dataset-of-casting-product) 등에서 다운로드할 수 있습니다.
+더 상세한 아키텍처는 `report/서비스아키텍쳐.md` 파일에서 확인할 수 있습니다.
 
-## ▶️ 실행 방법
+## ▶️ 실행 방법 (Local Development)
 
-### 1. 모델 훈련 (선택 사항)
+### 1. Docker Compose 사용 (권장)
 
-이미 훈련된 모델이 있지만, 모델을 다시 훈련하고 싶을 경우 다음 명령어를 실행합니다.
+로컬 환경에서 전체 파이프라인(API, Kafka, Consumer)을 가장 쉽게 실행하는 방법입니다.
 
-```bash
-py detect_defects.py
-```
+**사전 준비물:**
+- [Docker](https://www.docker.com/get-started/)
+- [Docker Compose](https://docs.docker.com/compose/install/) (Docker Desktop에 포함)
 
-### 2. API 및 웹 서버 실행
+**실행 명령어:**
 
-프로젝트의 핵심인 API 서버와 웹 UI를 실행합니다.
+프로젝트 루트 디렉터리에서 다음 명령어를 실행합니다.
 
 ```bash
-py -m uvicorn api.main:app --reload
+docker-compose up --build
 ```
 
-## 🚀 사용 방법
+이 명령어는 `docker-compose.yml`에 정의된 모든 서비스(Zookeeper, Kafka, API, Consumer)를 빌드하고 실행합니다.
 
-1.  서버 실행 후, 웹 브라우저에서 `http://127.0.0.1:8000` 주소로 접속합니다.
-2.  웹 페이지의 '파일 선택' 버튼을 눌러 검사하고 싶은 이미지를 선택합니다.
-3.  '검사 시작' 버튼을 누르면 잠시 후 예측 결과와 신뢰도가 화면에 표시됩니다.
-4.  만약 결함이 감지되면 브라우저에서 데스크톱 알림이 전송됩니다. (최초 1회 권한 허용 필요)
+**사용 방법:**
+
+1.  서비스가 모두 실행되면, 웹 브라우저에서 `http://127.0.0.1:8000` 주소로 접속합니다.
+2.  이미지를 업로드하고 예측을 수행합니다.
+3.  API 서버의 로그와 별개로, `hdfs_consumer` 서비스의 터미널 로그에서 Kafka로 주고받은 예측 결과 메시지를 실시간으로 확인할 수 있습니다.
+
+### 2. 수동 실행
+
+Docker를 사용하지 않고 직접 파이썬 환경에서 실행하는 방법입니다.
+
+**사전 준비물:**
+- Python 3.9+
+- `requirements.txt`에 명시된 라이브러리
+
+**설치:**
+```bash
+pip install -r requirements.txt
+```
+
+**실행:**
+```bash
+python -m uvicorn api.main:app --reload
+```
+*참고: 이 방법으로는 Kafka 연동 기능을 테스트할 수 없습니다.*
+
+## 🚀 Kubernetes 배포
+
+Kubernetes 클러스터가 준비된 환경에 배포하는 방법입니다.
+
+**사전 준비물:**
+- 동작 중인 Kubernetes 클러스터 (예: Minikube, Docker Desktop Kubernetes)
+- `kubectl` CLI
+
+**배포 절차:**
+
+1.  **Docker 이미지 빌드:**
+    아직 이미지를 빌드하지 않았다면, 다음 명령어로 Docker 이미지를 생성합니다.
+    ```bash
+    docker build -t casting-product-api:latest .
+    ```
+    *Minikube 사용 시: `minikube image load casting-product-api:latest` 명령어로 이미지를 클러스터에 로드해야 할 수 있습니다.*
+
+2.  **Kubernetes Manifest 적용:**
+    `k8s` 디렉터리에 있는 설정 파일들을 클러스터에 적용합니다.
+    ```bash
+    kubectl apply -f k8s/
+    ```
+
+3.  **서비스 확인 및 접속:**
+    - 배포 상태 확인: `kubectl get all`
+    - 서비스 접속: `service.yaml`에서 `type: NodePort`로 설정했으므로, Minikube 환경에서는 `minikube service casting-api-service` 명령어로 브라우저에서 바로 서비스를 열 수 있습니다. 또는 `(클러스터 IP):30007` 주소로 직접 접속할 수 있습니다.
 

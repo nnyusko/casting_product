@@ -3,3 +3,4 @@ pillow
 matplotlib
 fastapi
 uvicorn[standard]
+kafka-python

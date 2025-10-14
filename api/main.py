@@ -1,3 +1,11 @@
+import os
+import json
+import io
+import asyncio
+from contextlib import asynccontextmanager
+from typing import List
+from datetime import datetime
+
 from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -5,10 +13,13 @@ from fastapi.concurrency import run_in_threadpool
 import tensorflow as tf
 from PIL import Image
 import numpy as np
-import io
-import asyncio
-from contextlib import asynccontextmanager
-from typing import List
+from kafka import KafkaProducer
+from kafka.errors import KafkaError
+
+# --- Kafka Configuration ---
+KAFKA_TOPIC = "prediction_results"
+# Get Kafka bootstrap servers from environment variable, default to localhost for local running
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
 # --- Connection Manager for WebSockets ---
 class ConnectionManager:
@@ -28,17 +39,41 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# --- Model Loading ---
-ml_models = {}
+# --- App Context (Model & Kafka Producer) ---
+app_context = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Load ML Model
     model_path = 'models/casting_defect_detection_model.keras'
-    ml_models['defect_detector'] = tf.keras.models.load_model(model_path)
+    app_context['defect_detector'] = tf.keras.models.load_model(model_path)
     print(f"Model {model_path} loaded successfully.")
+
+    # Initialize Kafka Producer
+    print(f"Connecting to Kafka at {KAFKA_BOOTSTRAP_SERVERS}...")
+    try:
+        producer = KafkaProducer(
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+            retries=5, # Retry sending messages if broker is unavailable
+            acks='all' # Wait for all replicas to acknowledge
+        )
+        app_context['kafka_producer'] = producer
+        print("Successfully connected to Kafka.")
+    except KafkaError as e:
+        app_context['kafka_producer'] = None
+        print(f"Could not connect to Kafka: {e}")
+
     yield
-    ml_models.clear()
-    print("Models cleared.")
+
+    # Clean up resources
+    print("Clearing resources...")
+    if app_context.get('kafka_producer'):
+        app_context['kafka_producer'].close()
+        print("Kafka producer closed.")
+    app_context.clear()
+    print("App context cleared.")
+
 
 app = FastAPI(lifespan=lifespan)
 
@@ -60,7 +95,6 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            # Keep connection alive
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -80,7 +114,7 @@ async def predict(file: UploadFile = File(...)):
     image_array = np.array(image) / 255.0
     image_array = np.expand_dims(image_array, axis=[0, -1])
 
-    model = ml_models.get('defect_detector')
+    model = app_context.get('defect_detector')
     if model is None: return {"error": "Model is not loaded."}
 
     prediction = await run_in_threadpool(model.predict, image_array)
@@ -89,11 +123,29 @@ async def predict(file: UploadFile = File(...)):
     if score < 0.5:
         predicted_class = CLASS_NAMES[0]
         confidence = 1 - score
-        # Broadcast defect detection to all connected clients
-        await manager.broadcast(f'{{"type": "defect_detected", "filename": "{file.filename}"}}')
+        await manager.broadcast(f'{"type": "defect_detected", "filename": "{file.filename}"}')
     else:
         predicted_class = CLASS_NAMES[1]
         confidence = score
+
+    # --- Produce message to Kafka ---
+    producer = app_context.get('kafka_producer')
+    if producer:
+        prediction_data = {
+            "filename": file.filename,
+            "prediction": predicted_class,
+            "confidence": confidence,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        try:
+            producer.send(KAFKA_TOPIC, value=prediction_data)
+            producer.flush() # Ensure message is sent
+            print(f"Message sent to Kafka topic '{KAFKA_TOPIC}': {prediction_data}")
+        except KafkaError as e:
+            print(f"Failed to send message to Kafka: {e}")
+    else:
+        print("Kafka producer not available. Skipping message send.")
+    # --- End Kafka integration ---
 
     return {
         "filename": file.filename,

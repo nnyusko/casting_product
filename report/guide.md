@@ -145,3 +145,48 @@ C:/Users/user/Documents/GitHub/casting_product/
 ├── detect_defects.py
 └── training_history.png
 ```
+
+---
+
+## 데이터 파이프라인 아키텍처 설계 및 구축 (2025-10-14)
+
+### 1. 목표
+- 기존의 단일 서비스 구조를 MSA(마이크로서비스 아키텍처) 기반의 확장 가능한 데이터 파이프라인으로 전환.
+- Docker, Kubernetes, Kafka 등의 클라우드 네이티브 기술을 도입하여 시스템의 안정성과 확장성을 확보.
+
+### 2. 아키텍처 설계
+- 사용자 요청부터 데이터 분석, 시각화까지 이어지는 전체 과정을 여러 단계로 분리.
+- **구성 요소**: FastAPI, Docker, Kubernetes, Kafka, Hadoop HDFS, Spark, BI Tool.
+- 상세 설계 내용을 `report/서비스아키텍쳐.md` 파일로 작성하여 포트폴리오에 활용할 수 있도록 함.
+
+### 3. 실시간 데이터 파이프라인 구축
+- **Dockerize**: FastAPI 애플리케이션을 컨테이너화하기 위한 `Dockerfile` 작성.
+- **Kubernetes Manifests**: Kubernetes 환경에 서비스를 배포하기 위한 `k8s/deployment.yaml` 및 `k8s/service.yaml` 작성.
+- **Kafka 연동 환경 구축**:
+    - 로컬에서 Kafka를 포함한 전체 개발 환경을 쉽게 구축할 수 있도록 `docker-compose.yml` 파일 작성.
+    - Zookeeper, Kafka, API, Consumer 서비스를 정의.
+- **Producer 개발**: `api/main.py`를 수정하여 예측 결과를 Kafka 토픽(`prediction_results`)으로 전송하도록 기능 추가 (`kafka-python` 라이브러리 사용).
+- **Consumer 개발**:
+    - Kafka로부터 데이터를 수신하여 처리하는 `consumers/hdfs_consumer.py` 스크립트 작성.
+    - `docker-compose.yml`에 컨슈머를 별도의 서비스로 추가하여 API와 독립적으로 실행되도록 구성.
+
+### 4. 현재 상태
+- API 서버, Kafka, 컨슈머로 이어지는 실시간 데이터 파이프라인의 모든 코드와 실행 환경(Docker Compose) 정의가 완료됨.
+- 로컬에 Docker 환경이 갖춰지면 `docker-compose up` 명령으로 전체 파이프라인을 실행하고 테스트할 수 있는 상태.
+
+---
+
+## 내일 진행할 내용 (2025-10-15)
+
+### 1. 목표
+- 실시간으로 수집된 데이터를 저장하고 분석하는 **배치(Batch) 처리 시스템** 구축.
+
+### 2. 세부 계획
+- **Hadoop (HDFS) 연동**:
+    - `docker-compose.yml`에 HDFS(Namenode, Datanode) 서비스를 추가.
+    - `consumers/hdfs_consumer.py` 스크립트를 수정하여, Kafka에서 받은 데이터를 HDFS에 파일 형태로 저장하도록 로직 변경 (`hdfs` 라이브러리 사용).
+- **Spark 연동**:
+    - `docker-compose.yml`에 Spark(Master, Worker) 서비스를 추가.
+    - HDFS에 저장된 데이터를 주기적으로 분석하여 통계를 내는 Spark 애플리케이션(`spark_job.py`) 작성.
+- **데이터베이스 연동 (선택 사항)**:
+    - Spark 분석 결과를 BI 툴에서 쉽게 사용하도록 PostgreSQL 같은 RDBMS에 저장하는 기능 추가.

@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: casting-api-deployment
+  labels:
+    app: casting-api
+spec:
+  replicas: 2 # 트래픽 분산 및 고가용성을 위해 2개의 Pod를 실행
+  selector:
+    matchLabels:
+      app: casting-api
+  template:
+    metadata:
+      labels:
+        app: casting-api
+    spec:
+      containers:
+      - name: casting-api-container
+        image: casting-product-api:latest # 우리가 Dockerfile로 빌드할 이미지
+        imagePullPolicy: IfNotPresent # 로컬에 이미지가 있으면 원격에서 받지 않음
+        ports:
+        - containerPort: 8000 # 컨테이너가 노출하는 포트
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi" # 딥러닝 모델 로드를 위해 메모리 한도를 넉넉하게 설정
+            cpu: "1000m"
