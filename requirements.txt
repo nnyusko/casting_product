@@ -1,0 +1,5 @@
+tensorflow
+pillow
+matplotlib
+fastapi
+uvicorn[standard]

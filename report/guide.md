@@ -35,3 +35,113 @@ We also made Working prototype using this dataset. Click here
 
 Contact detail
 If you want to know more about project and dataset drop mail on ravirajsinhdabhi86@gmail.com or DM me on LinkedIn
+
+---
+
+## 프로젝트 진행 과정 (2025-10-14)
+
+### 1. 목표
+- 주조 제품 이미지 데이터를 사용하여 정상/불량 제품을 자동으로 분류하는 딥러닝 모델 개발.
+
+### 2. 환경 설정
+- Python 환경에서 다음 라이브러리를 설치:
+  - `tensorflow`: 딥러닝 모델 구축 및 훈련
+  - `pillow`: 이미지 데이터 처리
+  - `matplotlib`: 훈련 결과 시각화
+
+### 3. 모델 개발 및 훈련
+- `detect_defects.py` 스크립트를 작성하여 전체 프로세스를 자동화.
+- **모델:** CNN(합성곱 신경망) 기반의 이미지 분류 모델을 사용.
+- **1차 훈련:** 
+  - 1 에포크(epoch)만 훈련하여 기본적인 성능을 테스트.
+  - 테스트 정확도: **63.36%**
+- **2차 훈련:**
+  - 정확도 향상을 위해 훈련 에포크를 15로 늘림.
+  - 훈련 과정의 정확도와 손실을 `training_history.png` 그래프로 시각화하여 과적합 여부를 판단할 수 있도록 함.
+  - 테스트 정확도: **93.85%** 로 크게 향상됨.
+  - 훈련된 모델은 `casting_defect_detection_model.keras` 파일로 저장됨.
+
+### 4. Git 저장소 관리
+- **문제 발생:** `git push` 시 원격 저장소에서 오류가 발생하며 푸시가 거부됨.
+- **원인 분석:** 훈련된 모델 파일(`casting_defect_detection_model.keras`)의 크기가 약 204MB로, GitHub의 단일 파일 업로드 용량 제한(100MB)을 초과함.
+- **해결:**
+  - `git rm --cached` 명령어로 Git 추적에서 대용량 모델 파일을 제거.
+  - `.gitignore` 파일에 `*.keras` 및 `*.png` 패턴을 추가하여 향후 관련 파일들이 커밋되지 않도록 설정.
+  - `git commit --amend` 명령어로 마지막 커밋을 수정하여 위의 변경사항을 적용.
+  - 수정된 커밋을 원격 저장소에 성공적으로 푸시함.
+
+---
+
+## API 서비스 개발 (2025-10-14)
+
+### 1. 목표
+- 훈련된 딥러닝 모델을 사용하여 이미지 파일을 받아 예측 결과를 반환하는 웹 API를 구축.
+
+### 2. 프로젝트 구조 변경
+- 코드의 역할을 분리하기 위해 새로운 폴더를 생성:
+  - `api/`: API 관련 소스 코드를 저장.
+  - `models/`: 훈련된 모델 파일(`.keras`)을 저장.
+- 기존의 `casting_defect_detection_model.keras` 파일을 `models/` 폴더로 이동.
+
+### 3. API 서버 구축
+- **기술 스택:** `FastAPI`와 `Uvicorn`을 사용하여 API 서버를 구축.
+- **구현:** `api/main.py` 스크립트를 작성하여 다음 기능을 구현:
+  - 서버 시작 시 `models/` 폴더의 Keras 모델을 자동으로 로드.
+  - `/` 경로: API 동작을 확인하는 기본 메시지 반환.
+  - `/predict/` 경로: 이미지 파일을 업로드받아, 모델을 통해 예측을 수행하고 결과를 JSON 형식(예측 클래스, 신뢰도)으로 반환.
+
+### 4. 문제 해결
+- **경로 문제:** 모델 로드 시 파일 경로가 잘못 지정된 문제를 `models/`로 수정하여 해결.
+- **서버 응답 없음 문제:** `model.predict()`가 서버의 메인 프로세스를 차단하는 현상을 `run_in_threadpool`을 사용하여 별도 스레드에서 예측을 실행하도록 변경하여 해결.
+
+### 5. 최종 테스트
+- FastAPI의 자동 문서 페이지 (`/docs`)를 통해 이미지 업로드 및 예측 기능의 정상 동작을 확인함.
+
+---
+
+## 웹 UI 및 실시간 알림 기능 개발 (2025-10-14)
+
+### 1. 목표
+- 사용자가 쉽게 모델을 사용할 수 있는 웹 UI를 구축하고, 결함 감지 시 실시간으로 알림을 제공.
+
+### 2. 프론트엔드 개발
+- `api/static` 폴더를 생성하고 내부에 다음 파일들을 작성:
+  - `index.html`: 파일 업로드, 결과 표시 등 기본 UI 구조.
+  - `style.css`: 사용자 경험을 위한 스타일 시트.
+  - `script.js`: API 호출, WebSocket 통신, 동적 결과 표시 등 클라이언트 측 로직 처리.
+
+### 3. 백엔드 개발
+- `api/main.py`를 수정하여 다음 기능을 추가:
+  - **정적 파일 제공:** `index.html`을 포함한 `static` 폴더의 파일들을 웹 페이지로 제공.
+  - **WebSocket 지원:** `/ws` 경로를 통해 클라이언트와 실시간 양방향 통신 채널을 구축.
+  - **알림 기능:** `/predict` 경로에서 결함(`def_front`)이 감지되면, 연결된 모든 클라이언트에게 WebSocket을 통해 알림 메시지를 전송.
+
+### 4. 문제 해결
+- **WebSocket URL 오류:** `script.js`에서 잘못된 WebSocket 접속 주소(`ws:://`)를 생성하는 버그를 올바른 주소(`ws://`)로 수정하여 해결.
+
+### 5. 최종 결과
+- 사용자는 이제 `http://127.0.0.1:8000` 주소로 접속하여 웹페이지에서 직접 이미지를 업로드하고 예측 결과를 확인할 수 있음.
+- 결함 이미지 예측 시 브라우저를 통해 데스크톱 알림을 받게 됨.
+
+---
+
+## 현재 프로젝트 파일 구조
+
+```
+C:/Users/user/Documents/GitHub/casting_product/
+├── api/
+│   ├── static/
+│   │   ├── index.html
+│   │   ├── style.css
+│   │   └── script.js
+│   └── main.py
+├── data/
+│   └── ... (생략)
+├── models/
+│   └── casting_defect_detection_model.keras
+├── report/
+│   └── guide.md
+├── .gitignore
+├── detect_defects.py
+└── training_history.png
+```

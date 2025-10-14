@@ -1,0 +1,77 @@
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f9;
+    color: #333;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    margin: 0;
+}
+
+.container {
+    background: #fff;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    text-align: center;
+    width: 90%;
+    max-width: 500px;
+}
+
+h1 {
+    color: #444;
+    margin-bottom: 0.5rem;
+}
+
+p {
+    color: #666;
+    margin-bottom: 2rem;
+}
+
+.upload-area button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1rem;
+    margin-top: 1rem;
+}
+
+.upload-area button:hover {
+    background-color: #0056b3;
+}
+
+.result-area {
+    margin-top: 2rem;
+    padding: 1rem;
+    background-color: #e9ecef;
+    border-radius: 5px;
+}
+
+#prediction {
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+#prediction.def_front {
+    color: #dc3545; /* Red for defective */
+}
+
+#prediction.ok_front {
+    color: #28a745; /* Green for ok */
+}
+
+#confidence {
+    font-size: 1rem;
+    color: #555;
+}
+
+#imagePreview img {
+    max-width: 100%;
+    margin-top: 1rem;
+    border-radius: 5px;
+}
