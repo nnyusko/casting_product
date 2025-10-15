@@ -33,13 +33,13 @@
 
 ## 🏗️ 시스템 아키텍처 (System Architecture)
 
-이 프로젝트는 실시간 데이터 처리를 위한 확장 가능한 마이크로서비스 아키텍처(MSA)를 기반으로 설계되었습니다.
+이 프로젝트는 실시간 데이터 처리 및 분석을 위한 확장 가능한 마이크로서비스 아키텍처(MSA)를 기반으로 설계되었습니다.
 
-- **실시간 예측**: FastAPI 서버가 Docker 컨테이너로 실행되며, 사용자 요청에 따라 실시간으로 결함을 예측합니다.
-- **이벤트 스트리밍**: 예측 결과는 즉시 Apache Kafka 토픽으로 전송되어, 시스템의 다른 부분과 비동기적으로 통신합니다.
-- **데이터 처리 및 저장**: 별도의 Kafka Consumer가 이벤트를 수신하여, 향후 분석을 위해 Hadoop HDFS와 같은 대용량 스토리지에 데이터를 저장합니다.
-- **배치 분석**: Apache Spark를 사용하여 HDFS에 저장된 데이터를 주기적으로 분석하고 비즈니스 인사이트를 도출합니다.
-- **컨테이너 오케스트레이션**: 모든 서비스는 Kubernetes 환경에서 관리되어 자동 스케일링, 배포, 및 복구를 통해 높은 안정성과 확장성을 보장합니다.
+- **AI 기반 예측 서비스 (FastAPI)**: Docker 컨테이너로 실행되며, 사용자 요청에 따라 실시간으로 결함을 예측하고 결과를 Kafka로 전송합니다.
+- **이벤트 스트리밍 (Apache Kafka)**: 예측 결과를 포함한 모든 데이터 이벤트를 안정적으로 수집하고 전달하는 중앙 메시지 브로커 역할을 합니다.
+- **분산 파일 시스템 (Hadoop HDFS)**: Kafka로부터 수신된 예측 데이터를 영구적으로 저장하는 대용량 분산 스토리지입니다.
+- **분산 데이터 처리 (Apache Spark)**: HDFS에 저장된 데이터를 주기적으로 읽어 배치 분석을 수행하고, 비즈니스 인사이트를 도출합니다.
+- **컨테이너 오케스트레이션 (Docker Compose/Kubernetes)**: 모든 서비스는 Docker Compose (로컬 개발 환경) 또는 Kubernetes (배포 환경)에서 관리되어 자동 스케일링, 배포, 및 복구를 통해 높은 안정성과 확장성을 보장합니다.
 
 더 상세한 아키텍처는 `report/서비스아키텍쳐.md` 파일에서 확인할 수 있습니다.
 
@@ -47,27 +47,34 @@
 
 ### 1. Docker Compose 사용 (권장)
 
-로컬 환경에서 전체 파이프라인(API, Kafka, Consumer)을 가장 쉽게 실행하는 방법입니다.
+로컬 환경에서 전체 데이터 파이프라인(API, Kafka, HDFS, Spark)을 가장 쉽게 실행하는 방법입니다.
 
 **사전 준비물:**
 - [Docker](https://www.docker.com/get-started/)
 - [Docker Compose](https://docs.docker.com/compose/install/) (Docker Desktop에 포함)
 
-**실행 명령어:**
+**실행 순서:**
 
-프로젝트 루트 디렉터리에서 다음 명령어를 실행합니다.
+1.  **모든 서비스 시작:** 프로젝트 루트 디렉터리에서 다음 명령어를 실행하여 모든 서비스를 빌드하고 백그라운드에서 실행합니다.
+    ```bash
+    docker-compose up -d --build
+    ```
 
-```bash
-docker-compose up --build
-```
+2.  **웹 인터페이스 접속 (선택 사항):** 서비스가 모두 실행되면, 웹 브라우저에서 `http://localhost:8000` 주소로 접속하여 웹 UI를 통해 이미지를 업로드하고 예측을 수행할 수 있습니다.
 
-이 명령어는 `docker-compose.yml`에 정의된 모든 서비스(Zookeeper, Kafka, API, Consumer)를 빌드하고 실행합니다.
+3.  **샘플 이미지로 예측 요청 (데이터 생성):** HDFS 및 Spark 분석을 위한 데이터를 생성하기 위해, `api` 서비스에 샘플 이미지를 전송합니다. `api` 컨테이너 내에서 `curl` 명령어를 사용합니다.
+    ```bash
+    docker-compose exec api curl -X POST -F "file=@/app/data/casting_512x512/casting_512x512/def_front/cast_def_0_0.jpeg" http://localhost:8000/predict/
+    ```
+    이 요청은 예측 결과를 Kafka로 전송하고, `hdfs_consumer`가 이를 HDFS에 저장하도록 트리거합니다.
 
-**사용 방법:**
+4.  **HDFS 데이터 확인 (선택 사항):** `hdfs_consumer` 서비스는 예측 결과를 Kafka로부터 받아 HDFS의 `/predictions` 경로에 JSON 파일로 저장합니다. HDFS 웹 UI (`http://localhost:9870`)에서 저장된 파일을 확인할 수 있습니다.
 
-1.  서비스가 모두 실행되면, 웹 브라우저에서 `http://127.0.0.1:8000` 주소로 접속합니다.
-2.  이미지를 업로드하고 예측을 수행합니다.
-3.  API 서버의 로그와 별개로, `hdfs_consumer` 서비스의 터미널 로그에서 Kafka로 주고받은 예측 결과 메시지를 실시간으로 확인할 수 있습니다.
+5.  **Spark 배치 분석 실행:** `spark-master` 컨테이너에서 다음 명령어를 실행하여 HDFS에 저장된 데이터를 분석합니다.
+    ```bash
+    docker-compose exec spark-master /spark/bin/spark-submit /app/spark_job.py
+    ```
+    이 명령어는 HDFS의 `/predictions` 디렉터리에서 JSON 파일을 읽어 `def_front` 및 `ok_front` 예측 개수를 집계하여 출력합니다.
 
 ### 2. 수동 실행
 
@@ -86,7 +93,7 @@ pip install -r requirements.txt
 ```bash
 python -m uvicorn api.main:app --reload
 ```
-*참고: 이 방법으로는 Kafka 연동 기능을 테스트할 수 없습니다.*
+*참고: 이 방법으로는 Kafka, HDFS, Spark 연동 기능을 테스트할 수 없습니다.*
 
 ## 🚀 Kubernetes 배포
 

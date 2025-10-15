@@ -49,20 +49,22 @@ async def lifespan(app: FastAPI):
     app_context['defect_detector'] = tf.keras.models.load_model(model_path)
     print(f"Model {model_path} loaded successfully.")
 
-    # Initialize Kafka Producer
+    # Initialize Kafka Producer with retry logic
     print(f"Connecting to Kafka at {KAFKA_BOOTSTRAP_SERVERS}...")
-    try:
-        producer = KafkaProducer(
-            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-            retries=5, # Retry sending messages if broker is unavailable
-            acks='all' # Wait for all replicas to acknowledge
-        )
-        app_context['kafka_producer'] = producer
-        print("Successfully connected to Kafka.")
-    except KafkaError as e:
-        app_context['kafka_producer'] = None
-        print(f"Could not connect to Kafka: {e}")
+    while True:
+        try:
+            producer = KafkaProducer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                retries=5,
+                acks='all'
+            )
+            app_context['kafka_producer'] = producer
+            print("Successfully connected to Kafka.")
+            break  # Exit the loop on successful connection
+        except KafkaError as e:
+            print(f"Could not connect to Kafka: {e}. Retrying in 5 seconds...")
+            await asyncio.sleep(5)
 
     yield
 
@@ -123,7 +125,7 @@ async def predict(file: UploadFile = File(...)):
     if score < 0.5:
         predicted_class = CLASS_NAMES[0]
         confidence = 1 - score
-        await manager.broadcast(f'{"type": "defect_detected", "filename": "{file.filename}"}')
+        await manager.broadcast(f'{{"type": "defect_detected", "filename": "{file.filename}"}}')
     else:
         predicted_class = CLASS_NAMES[1]
         confidence = score

@@ -190,3 +190,42 @@ C:/Users/user/Documents/GitHub/casting_product/
     - HDFS에 저장된 데이터를 주기적으로 분석하여 통계를 내는 Spark 애플리케이션(`spark_job.py`) 작성.
 - **데이터베이스 연동 (선택 사항)**:
     - Spark 분석 결과를 BI 툴에서 쉽게 사용하도록 PostgreSQL 같은 RDBMS에 저장하는 기능 추가.
+
+---
+
+## 프로젝트 진행 과정 (2025-10-15)
+
+### 1. 목표
+- 실시간으로 수집된 데이터를 저장하고 분석하는 배치(Batch) 처리 시스템 구축.
+
+### 2. Docker Compose 환경 설정 및 문제 해결
+- **HDFS (Hadoop Distributed File System) 서비스 추가:**
+  - `docker-compose.yml` 파일에 `namenode` 및 `datanode` 서비스를 추가하여 HDFS 클러스터를 구성.
+  - `bde2020/hadoop-namenode` 및 `bde2020/hadoop-datanode` 이미지를 사용.
+  - **문제 해결:** `zookeeper` 서비스에 `ZOOKEEPER_CLIENT_PORT` 환경 변수가 누락되어 Kafka가 Zookeeper에 연결하지 못하는 문제 발생. `docker-compose.yml`에 `ZOOKEEPER_CLIENT_PORT: 2181`을 추가하여 해결.
+  - **문제 해결:** `datanode`가 `namenode`에 연결하지 못하는 문제 발생. `namenode`와 `datanode` 서비스에 `CORE_CONF_fs_defaultFS: hdfs://namenode:8020` 환경 변수를 추가하여 해결.
+- **Spark 서비스 추가:**
+  - `docker-compose.yml` 파일에 `spark-master` 및 `spark-worker` 서비스를 추가하여 Spark 클러스터를 구성.
+  - `bde2020/spark-master` 및 `bde2020/spark-worker` 이미지를 사용.
+  - `spark-master`의 웹 UI 포트 충돌을 피하기 위해 `8081:8080`으로 포트 매핑.
+- **의존성 관리:**
+  - `api` 서비스에서 `python-multipart` 라이브러리 누락으로 인한 오류 발생. `requirements.txt`에 `python-multipart`를 추가하고 이미지를 재빌드하여 해결.
+  - `hdfs_consumer.py`에서 HDFS 연동을 위해 `hdfs` 라이브러리 추가. `requirements.txt`에 `hdfs`를 추가하고 이미지를 재빌드하여 해결.
+
+### 3. 데이터 파이프라인 구현 및 검증
+- **Kafka Producer (API):**
+  - `api/main.py`의 Kafka 연결 로직에 재시도 메커니즘을 추가하여 Kafka 브로커가 완전히 준비될 때까지 대기하도록 개선.
+  - `/predict` 엔드포인트 호출 시 예측 결과를 Kafka 토픽(`prediction_results`)으로 전송.
+  - **문제 해결:** `api/main.py`의 `manager.broadcast` f-string 포맷팅 오류(`ValueError: Invalid format specifier`) 발생. 중괄호 이스케이프(`{{...}}`)를 통해 해결.
+- **Kafka Consumer (HDFS 연동):**
+  - `consumers/hdfs_consumer.py` 스크립트를 수정하여 Kafka로부터 메시지를 수신하고, 이를 HDFS의 `/predictions` 디렉터리에 JSON 파일 형태로 저장하도록 구현.
+  - HDFS 디렉터리 존재 여부를 확인하고 없으면 생성하는 로직 포함.
+- **Spark Batch Job:**
+  - `spark/spark_job.py` 스크립트를 작성하여 HDFS의 `/predictions` 디렉터리에서 JSON 파일을 읽어 예측 결과(`def_front`, `ok_front`)를 집계하고 출력.
+
+### 4. 최종 검증
+- `curl` 명령어를 사용하여 `api` 서비스의 `/predict` 엔드포인트에 샘플 이미지(`cast_def_0_0.jpeg`)를 전송.
+- `hdfs_consumer` 로그를 통해 Kafka 메시지 수신 및 HDFS 파일 저장(`predictions/0.json`, `predictions/1.json`) 확인.
+- `spark-master` 컨테이너에서 `spark-submit` 명령어를 통해 `spark_job.py`를 실행하여 HDFS 데이터 분석 결과(`def_front: 2`) 확인.
+- 모든 서비스가 정상적으로 연동되어 데이터 파이프라인이 성공적으로 작동함을 확인.
+
