@@ -4,9 +4,9 @@ FROM python:3.9-slim
 
 # 2. Set Environment Variables
 # Prevents Python from writing pyc files to disc
-ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONDONTWRITEBYTECODE=1
 # Ensures Python output is sent straight to the terminal without buffering
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONUNBUFFERED=1
 
 # 3. Set Working Directory
 # Set the working directory in the container to /app
